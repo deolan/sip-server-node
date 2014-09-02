@@ -620,6 +620,11 @@ function sipUri() {
 	};
 }
 
+exports.sipUri = sipUri;
+exports.sipParameter = sipParameter;
+exports.sipHeader = sipParameter;
+exports.SIPST_STATUS = SIPST_STATUS;
+
 // Contact header
 function sipContactHeader()
 {
@@ -801,11 +806,11 @@ function sipMessage() {
 	this.viaHeader = [];
 	// Max-Forwards
 	this.maxForwards = 0;
-	// 
+	// User-Agent
 	this.userAgent = '';
 	// Allow
 	this.allow = '';
-	
+
 	// SDP
 	this.contentType = '';
 	var sdp;
@@ -1049,6 +1054,9 @@ function sipMessage() {
 						break;
 					case SIP_HEADER.SH_CONTENT_LENGTH:
 						// TODO
+						break;
+					case SIP_HEADER.SH_EXPIRES:
+						this.expiresValue = parseInt(headerValue);
 						break;
 					case SIP_HEADER.SH_MAX_FORWARDS:
 						this.maxForwards = parseInt(headerValue);
@@ -2056,6 +2064,8 @@ function sipRegistration() {
 	this.cSeq = '';
 	this.fromTag = '';
 	this.toTag = '';
+	this.expire = 0;
+	
 	// received transport (useful for WebSocket connections)
 	this.transport = ''; 
 	// for JSON
@@ -2065,7 +2075,8 @@ function sipRegistration() {
 			callId : this.callId, 
 			cSeq : this.cSeq,
 			fromTag : this.fromTag,
-			toTag : this.toTag
+			toTag : this.toTag,
+			expire : this.expire
 			};
 	};
 }
@@ -2098,6 +2109,7 @@ function sipRegistrationManager(sipProcessingInstance) {
 			registrationInstance.contact = recvMessage.contactHeader;
 			registrationInstance.number = recvMessage.fromUri.user;
 			registrationInstance.transport = remoteTransport;
+			registrationInstance.expires = recvMessage.expiresValue;
 			
 			this.processRegistration(registrationInstance);
 			// send response (may be not immediately)
@@ -2114,23 +2126,48 @@ function sipRegistrationManager(sipProcessingInstance) {
 	this.addRegistration = function(registration) {
 		registrationInfo.push(registration);
 	};
-	this.findRegistration = function(number) {
+	
+	this.findRegistration = function(number, callId) {
 		for (var i = 0, len = registrationInfo.length; i < len; i++) {
-			if( registrationInfo[i].number == number )  {
+			if( ( registrationInfo[i].number == number ) &&
+					( registrationInfo[i].callId == callId ) )  {
 				return registrationInfo[i];
 			}
 		}	
 	};
+	
 	this.processRegistration = function(registration) {
-		// TODO - try to find the same registration in local registrationInfo
-
-		// add registration to local storage
-		this.addRegistration(registration);
-		// add/update registration to remote storage
+		// try to find the same registration in local registrationInfo
+		var existingTransaction = this.findRegistration(registration.number, registration.callId);
+		if( existingTransaction !== undefined ) {
+			if( registration.expires !== 0 ) {
+				
+			} else {
+				// end of expiration
+				this.deleteRegistration(existingTransaction);
+			}			
+		} else {
+			// new registration
+			if( registration.expires !== 0 ) {
+				if( registration.expires === -1 ) {
+					// a value by default could be taken
+				}
+				// add registration to local storage
+				this.addRegistration(registration);
+			} else {
+				// end of expiration
+				// do nothing
+			}
+		}
 
 	};
-	this.deleteRegistration = function(configuration) {
-		
+	this.deleteRegistration = function(registration) {
+		console.log('sipRegistrationManager:deleteRegistration length before is ' + registrationInfo.length);
+		var index = registrationInfo.indexOf(registration);
+		if (index > -1) {
+			registrationInfo.splice(index, 1);
+		}
+		console.log('sipRegistrationManager:deleteRegistration length before is ' + registrationInfo.length);
 	};
 }
 
