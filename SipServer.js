@@ -27,11 +27,23 @@ var stream = require('net');
 var websocket = require('websocket').server;
 var http = require('http');
 
-//// console.log = function() {};
+//// var sipsTrace = function() {};
+
+var sipsTrace = function(traceInfo) {
+	var date = new Date();
+
+	console.log(date.getHours() + ':' + 
+			date.getMinutes() + ':' + 
+			date.getSeconds() + '.' + 
+			date.getMilliseconds() + ' ' + 
+			traceInfo);
+};
 
 // SIP entity settings
 function sipSettings(localPort)
 {	
+	sipsTrace('-----------------------------------------------');
+	sipsTrace('Configuration begin');
 	this.localIpv4Address = '127.0.0.1';
 	this.localIpv6Address = '::1';
 /*
@@ -42,10 +54,14 @@ function sipSettings(localPort)
 	this.localIpv4Address = '192.168.1.20';
 	this.localIpv6Address = '2607:f0d0:2001:a::20';
  */
-	console.log('local port is ' + localPort);
+
 	this.localUdpPort = localPort;
 	this.localTcpPort = localPort;
 	this.localWsPort = localPort + 30;
+	
+	sipsTrace('UDP local port is ' + this.localUdpPort);
+	sipsTrace('TCP local port is ' + this.localTcpPort);
+	sipsTrace('WS local port is ' + this.localWsPort);
 	
 	// proxy/server settings
 	this.remoteIpv4Address = '127.0.0.1';
@@ -67,10 +83,6 @@ function sipSettings(localPort)
 	// SIP protocol settings
 	this.registerRefreshTimeout = 3600;
 	this.MaxForwards = 70;
-	// timers
-	this.T1 = 500;	// 500 ms
-	this.T2 = 4000; // 4 s
-	this.T4 = 5000;	// 5 s
 	
 	// databases
 	this.isStoreDatabaseUsed = true;
@@ -78,10 +90,12 @@ function sipSettings(localPort)
 	
 	// cloud/cluster deployment
 	this.nodeId = '12345abcdf';
+	sipsTrace('Configuration end');
+	sipsTrace('-----------------------------------------------');
 }
 
 //SIP stack version
-var SIP_STACK_VERSION = '1.00.0027';
+var SIP_STACK_VERSION = '1.00.0030';
 
 // supported SIP schemas
 var sipScheme = 'sip';
@@ -378,6 +392,68 @@ function sipStack() {
 	};
 	this.getAllow = function() {
 		return SIP_METHOD.SM_ACK + ', ' + SIP_METHOD.SM_BYE + ', ' + SIP_METHOD.SM_CANCEL + ', ' + SIP_METHOD.SM_INVITE;
+	};
+	// protocol timers
+	var t1 = 500;
+	var t2 = 4000;
+	var t4 = 5000;
+
+	this.getTimerValue = function(type, transport)
+	{
+		switch(type) {
+		case SIP_TIMER.TIMER_A:
+			return t1;
+			break;
+		case SIP_TIMER.TIMER_B:
+			return 64*t1;
+			break;
+		case SIP_TIMER.TIMER_C:
+			return 180000;	// > 3 min
+			break;
+		case SIP_TIMER.TIMER_D:
+			if(transport === TRANSPORT.TR_UDP) {
+				return 32000;	// > 32 sec
+			} else {
+				return 0;
+			}
+			break;
+		case SIP_TIMER.TIMER_E:
+			return t1;
+			break;
+		case SIP_TIMER.TIMER_F:
+			return 64*t1;
+			break;
+		case SIP_TIMER.TIMER_G:
+			return t1;
+			break;
+		case SIP_TIMER.TIMER_H:
+			return 64*t1;
+			break;
+		case SIP_TIMER.TIMER_I:
+			if(transport === TRANSPORT.TR_UDP) {
+				return t4;
+			} else {
+				return 0;
+			}
+			break;
+		case SIP_TIMER.TIMER_J:
+			if(transport === TRANSPORT.TR_UDP) {
+				return 64*t1;
+			} else {
+				return 0;
+			}
+			break;
+		case SIP_TIMER.TIMER_K:
+			if(transport === TRANSPORT.TR_UDP) {
+				return t4;
+			} else {
+				return 0;
+			}
+			break;
+		default:
+			return 0;
+			break;
+		};
 	};
 }
 
@@ -920,7 +996,7 @@ function sipMessage() {
 				if(spIndex === -1) {
 					if( messageLine === '') {
 						// 
-						console.log('sip keep-alive is received');
+						sipsTrace('sip keep-alive is received');
 						return SIPST_STATUS.SIPSC_MESSAGE_KEEPALIVE;
 					} else {
 						return SIPST_STATUS.SIPSC_MESSAGE_WITHOUT_METHOD;
@@ -1125,7 +1201,7 @@ function sipMessage() {
 				}	
 			}
 		} else {
-			console.log('flush sdp');
+			sipsTrace('flush sdp');
 			// sdp.sdpAttribute = [];
 		}	
 	};
@@ -1157,7 +1233,7 @@ function createSipResponse(status, method) {
 	return response;
 }
 
-function sipTransaction(stack) {
+function sipTransaction() {
 	this.branch = '';
 	this.fromTag = '';
 	this.toTag = '';
@@ -1168,7 +1244,7 @@ function sipTransaction(stack) {
 }
 
 function sipInviteServerTransaction(method, stack, localTransport, remoteTransport) {
-	this.transaction = new sipTransaction(stack);
+	this.transaction = new sipTransaction();
 	this.transaction.method = method;
 	this.message;
 	this.remoteMessage;
@@ -1203,7 +1279,7 @@ function sipInviteServerTransaction(method, stack, localTransport, remoteTranspo
 
 	this.createRequest = function(method, calledUser, sdp, sdpType) {	
 		// no operation
-		console.log('sipInviteServerTransaction.createRequest - no operation');
+		sipsTrace('sipInviteServerTransaction.createRequest - no operation');
 		return;
 	};	
 
@@ -1293,7 +1369,7 @@ function sipInviteServerTransaction(method, stack, localTransport, remoteTranspo
 	};
 	
 	this.receiveResponse = function(remoteMessage) {
-		console.log('sipInviteServerTransaction.receiveResponse - no operation');
+		sipsTrace('sipInviteServerTransaction.receiveResponse - no operation');
 	};
 	
 	this.timerHandler = function(timerType)
@@ -1305,14 +1381,21 @@ function sipInviteServerTransaction(method, stack, localTransport, remoteTranspo
 	};
 }
 
-function sipInviteClientTransaction(method, stack, localTransport, remoteTransport) {
-	this.transaction = new sipTransaction(stack);
+function sipInviteClientTransaction(method, stack, localTransport, remoteTransport, send, remove) {
+	this.transaction = new sipTransaction();
 	this.transaction.method = method;
 	this.message;
 	this.remoteMessage;
 	this.localTransport = localTransport;
 	this.remoteTransport = remoteTransport;
 
+	// timers
+	var timerA;
+	var timerB;
+	var timerD;
+	
+	var timerACounter = 1;
+	
 	this.init = function(callId, fromTag, toTag, cSeq, branchId) {
 		// transaction initialization
 		if( callId !== undefined ) {
@@ -1357,10 +1440,10 @@ function sipInviteClientTransaction(method, stack, localTransport, remoteTranspo
 		default:
 			this.message = createSipRequest(SIP_METHOD.SM_INVITE);
 			this.transaction.method = method;
+			// update transaction state
+			this.transaction.state = SIP_IC_TRANSACTION_STATE.IC_TR_CALLING;
 			break;
 		};
-		// update transaction state
-		this.transaction.state = SIP_IC_TRANSACTION_STATE.IC_TR_TRYING;
 		// request-uri
 		this.message.requestUri.user = calledUser;
 		this.message.requestUri.host = remoteTransport.host;
@@ -1398,6 +1481,12 @@ function sipInviteClientTransaction(method, stack, localTransport, remoteTranspo
 		contact.uri.isIpv6 = this.localTransport.isIpv6;
 		switch(this.localTransport.protocol) {
 		case TRANSPORT.TR_UDP:
+			// start timers
+			// TODO to remove this if
+			if(method === SIP_METHOD.SM_INVITE) {
+			timerA = setTimeout(timerHandler, 
+					stack.getTimerValue(SIP_TIMER.TIMER_A, TRANSPORT.TR_UDP), SIP_TIMER.TIMER_A, this);
+			}
 			break;
 		case TRANSPORT.TR_TCP:
 			contact.uri.params.push(sipParameter(SIP_PARAMETER.SP_TRANSPORT,'tcp'));
@@ -1406,6 +1495,9 @@ function sipInviteClientTransaction(method, stack, localTransport, remoteTranspo
 			contact.uri.params.push(sipParameter(SIP_PARAMETER.SP_TRANSPORT,'ws'));
 			break;
 		};
+		timerD = setTimeout(timerHandler, 
+				stack.getTimerValue(SIP_TIMER.TIMER_D, TRANSPORT.TR_UDP), SIP_TIMER.TIMER_D, this);
+		
 		this.message.contactHeader.push(contact);
 		// cseq	
 		this.message.cSeq = this.transaction.seqNumber;
@@ -1417,27 +1509,113 @@ function sipInviteClientTransaction(method, stack, localTransport, remoteTranspo
 		if(sdp != undefined) {
 			this.message.addSdp(sdp, sdpType);
 		}
-		
+		//
 		return;
 	};
 
+	var timerHandler = function(timerType, transaction) {
+		switch(timerType) {
+		case SIP_TIMER.TIMER_A:
+			sipsTrace('timer A is fired');
+			if( transaction.transaction.state == SIP_IC_TRANSACTION_STATE.IC_TR_CALLING ) {
+				if( timerACounter <= 8 ) {
+					timerACounter += 1;
+					sipsTrace('calling state - message retransmission');
+					send(transaction, transaction.remoteTransport);
+					timerA = setTimeout(timerHandler, 
+							( stack.getTimerValue(SIP_TIMER.TIMER_A, TRANSPORT.TR_UDP) * timerACounter), 
+							SIP_TIMER.TIMER_A, transaction);
+					// resend a message
+				} else {
+					sipsTrace('no more timer A retransmissions');
+				}	
+			}
+			break;
+		case SIP_TIMER.TIMER_B:
+			sipsTrace('timer B is fired');
+			remove(transaction);
+			break;
+		case SIP_TIMER.TIMER_D:
+			sipsTrace('timer D is fired');
+			remove(transaction);
+			break;
+		};
+	};
+	
 	this.receiveRequest = function(remoteMessage) {
-		console.log('sipInviteClientTransaction.receiveRequest - no operation');
+		sipsTrace('sipInviteClientTransaction.receiveRequest - no operation');
 	};
 
 	this.createResponse = function(status, sdp, sdpType) {
-		console.log('sipInviteClientTransaction.createResponse - no operation');
+		sipsTrace('sipInviteClientTransaction.createResponse - no operation');
 	};
 	
 	this.receiveResponse = function(remoteMessage) {	
 		this.remoteMessage = remoteMessage;
 		this.transaction.toTag = getParameterValue(this.remoteMessage.toParams, SIP_PARAMETER.SP_TAG);
-		// this.transaction.state = SIP_IS_TRANSACTION_STATE.IS_TR_PROCEEDING;
+
+		// stop timer A
+		if( timerA !== undefined ) {
+			clearTimeout(timerA);
+			timerACounter = 1;
+		}
+		
+		switch(this.transaction.state)
+		{
+			case SIP_IC_TRANSACTION_STATE.IC_TR_NULL:
+				// no op - wrong state
+				break;
+			case SIP_IC_TRANSACTION_STATE.IC_TR_CALLING:
+				// state change
+				if( remoteMessage.statusCode < SIP_STATUS_CODE.SC_200 ) {
+					this.transaction.state = SIP_IC_TRANSACTION_STATE.IC_TR_PROCEEDING;
+				} else if ( remoteMessage.statusCode < SIP_STATUS_CODE.SC_300 ) {
+					// stop timer 
+					if( timerB !== undefined ) {
+						clearTimeout(timerB);
+					}
+					this.transaction.state = SIP_IC_TRANSACTION_STATE.IC_TR_TERMINATED;
+				} else if( remoteMessage.statusCode < SIP_STATUS_CODE.SC_699 ) {
+					this.transaction.state = SIP_IC_TRANSACTION_STATE.IC_TR_COMPLETED;
+				} else {
+					sipsTrace('wrong message status');
+				}
+				break;
+			case SIP_IC_TRANSACTION_STATE.IC_TR_PROCEEDING:
+				// state change
+				if( remoteMessage.statusCode < SIP_STATUS_CODE.SC_200 ) {
+					this.transaction.state = SIP_IC_TRANSACTION_STATE.IC_TR_PROCEEDING;
+				} else if ( remoteMessage.statusCode < SIP_STATUS_CODE.SC_300 ) {
+					// stop timer 
+					if( timerB !== undefined ) {
+						clearTimeout(timerB);
+					}
+					this.transaction.state = SIP_IC_TRANSACTION_STATE.IC_TR_TERMINATED;
+				} else if( remoteMessage.statusCode < SIP_STATUS_CODE.SC_699 ) {
+					this.transaction.state = SIP_IC_TRANSACTION_STATE.IC_TR_COMPLETED;
+				} else {
+					sipsTrace('wrong message status');
+				}
+				break;
+			case SIP_IC_TRANSACTION_STATE.IC_TR_COMPLETED:
+				// state change
+				if( ( remoteMessage.statusCode >= SIP_STATUS_CODE.SC_300 ) && 
+						( remoteMessage.statusCode <  SIP_STATUS_CODE.SC_699 ) ) {
+					this.transaction.state = SIP_IC_TRANSACTION_STATE.IC_TR_COMPLETED;
+				} else {
+					sipsTrace('wrong message status/state');
+				}
+				break;
+			case SIP_IC_TRANSACTION_STATE.IC_TR_TERMINATED:		
+				break;
+			default:
+				break;
+		};
 	};
 }
 
 function sipNonInviteServerTransaction(method, stack, localTransport, remoteTransport) {
-	this.transaction = new sipTransaction(stack);
+	this.transaction = new sipTransaction();
 
 	this.transaction.method = method;
 	this.message;
@@ -1474,7 +1652,7 @@ function sipNonInviteServerTransaction(method, stack, localTransport, remoteTran
 	};
 	
 	this.createRequest = function(method, calledUser, sdp, sdpType) {
-		console.log('sipNonInviteServerTransaction.createRequest - no operation');
+		sipsTrace('sipNonInviteServerTransaction.createRequest - no operation');
 		// no operation
 		return;
 	};	
@@ -1497,7 +1675,6 @@ function sipNonInviteServerTransaction(method, stack, localTransport, remoteTran
 	};		
 	
 	this.createResponse = function(status, sdp, sdpType) {
-			
 		switch(this.transaction.state) {
 		case SIP_NIS_TRANSACTION_STATE.NIS_TR_TRYING:
 			if(( status >= SIP_STATUS_CODE.SC_100 ) && ( status <= SIP_STATUS_CODE.SC_699 )) {
@@ -1559,7 +1736,7 @@ function sipNonInviteServerTransaction(method, stack, localTransport, remoteTran
 	};	
 	
 	this.receiveResponse = function(remoteMessage) {
-		console.log('sipNonInviteServerTransaction.receiveResponse - no operation');
+		sipsTrace('sipNonInviteServerTransaction.receiveResponse - no operation');
 		// no operation
 		return;
 	};	
@@ -1574,7 +1751,7 @@ function sipNonInviteServerTransaction(method, stack, localTransport, remoteTran
 }
 
 function sipNonInviteClientTransaction(method, stack, localTransport, remoteTransport) {
-	this.transaction = new sipTransaction(stack);
+	this.transaction = new sipTransaction();
 	this.transaction.method = method;
 	this.message = createSipRequest(method);
 	this.remoteMessage;
@@ -1668,11 +1845,11 @@ function sipNonInviteClientTransaction(method, stack, localTransport, remoteTran
 	};
 
 	this.receiveRequest = function(remoteMessage) {
-		console.log('sipNonInviteClientTransaction.receiveRequest - no operation');
+		sipsTrace('sipNonInviteClientTransaction.receiveRequest - no operation');
 	};
 	
 	this.createResponse = function(status, sdp, sdpType) {
-		console.log('sipNonInviteClientTransaction.createResponse - no operation');
+		sipsTrace('sipNonInviteClientTransaction.createResponse - no operation');
 	};
 	
 	this.receiveResponse = function(remoteMessage) {	
@@ -1701,24 +1878,24 @@ function sipTransactionStorage() {
 		
 		// TODO - refactor - to speed up
 		for (var i=0; i<count; i++) {
-			//console.log('transaction number ' + i);
-			//console.log('searched callId is ' + callId);
-			//console.log('current callId is ' + transactionStorage[i].transaction.callId);
-			//console.log('searched method is ' + method);
-			//console.log('current method is ' + transactionStorage[i].transaction.method);
-			//console.log('searched cSeq is ' + cSeq);
-			//console.log('current cSeq is ' + transactionStorage[i].transaction.seqNumber);
+			//sipsTrace('transaction number ' + i);
+			//sipsTrace('searched callId is ' + callId);
+			//sipsTrace('current callId is ' + transactionStorage[i].transaction.callId);
+			//sipsTrace('searched method is ' + method);
+			//sipsTrace('current method is ' + transactionStorage[i].transaction.method);
+			//sipsTrace('searched cSeq is ' + cSeq);
+			//sipsTrace('current cSeq is ' + transactionStorage[i].transaction.seqNumber);
 			var transactionTmp = transactionStorage[i];
 			
 			if( (callId == transactionTmp.transaction.callId)  &&
 				(method == transactionTmp.transaction.method) &&
 				(cSeq == transactionTmp.transaction.seqNumber) ) {
-				console.log('sipTransactionStorage:callId is found');
+				sipsTrace('sipTransactionStorage:callId is found');
 				return transactionStorage[i];
 			};
 		};
 
-		console.log('sipTransactionStorage:callId isn\'t found');
+		sipsTrace('sipTransactionStorage:callId isn\'t found');
 	};
 	
 	// TODO to refactor
@@ -1727,20 +1904,20 @@ function sipTransactionStorage() {
 			for (var i=0; i<count; i++){
 				if( ( callIdValue == transactionStorage[i].transaction.callId ) &&
 						( method == transactionStorage[i].transaction.method ) ) {
-					console.log('sipTransactionStorage:callId is found');
+					sipsTrace('sipTransactionStorage:callId is found');
 					return transactionStorage[i];
 				};
 			};
-		console.log('sipTransactionStorage:callId isn\'t found');
+		sipsTrace('sipTransactionStorage:callId isn\'t found');
 	};
 	
 	this.deleteTransaction = function(transaction) {
-		// console.log('sipTransactionStorage:deleteTransaction length before is ' + transactionStorage.length);
+		sipsTrace('sipTransactionStorage:deleteTransaction length before is ' + transactionStorage.length);
 		var index = transactionStorage.indexOf(transaction);
 		if (index > -1) {
 			transactionStorage.splice(index, 1);
 		}
-		// console.log('sipTransactionStorage:deleteTransaction length after is ' + transactionStorage.length);
+		sipsTrace('sipTransactionStorage:deleteTransaction length after is ' + transactionStorage.length);
 	};
 }
 
@@ -1773,7 +1950,7 @@ function sipTransportManager() {
 	findTransportByHandler = function(handler) {
 		for(var i=0;i<remoteTransports.length;i++) {
 			if( remoteTransports[i].handler == handler ) {
-				console.log('sipTransportManager.findTransportByHandler transport is found');
+				sipsTrace('sipTransportManager.findTransportByHandler transport is found');
 				return remoteTransports[i];
 			}
 		}
@@ -1783,12 +1960,12 @@ function sipTransportManager() {
 		var removedTransportIndex = -1;
 		for(var i=0;i<remoteTransports.length;i++) {			
 			if( remoteTransports[i].handler == handler ) {
-				console.log('sipTransportManager.deleteRemoteTransport transport is found');
+				sipsTrace('sipTransportManager.deleteRemoteTransport transport is found');
 				removedTransportIndex = i;
 			}
 		}
 		if( removedTransportIndex != -1 ) {
-			console.log('sipTransportManager.deleteRemoteTransport transport is removed');
+			sipsTrace('sipTransportManager.deleteRemoteTransport transport is removed');
 			remoteTransports.splice(removedTransportIndex, 1);
 		}
 	};
@@ -1814,7 +1991,7 @@ function sipTransportManager() {
 				this.localTransportUdpIpv4 = transport;
 				this.localTransportUdpIpv4.handler = dgram.createSocket('udp4');
 				this.localTransportUdpIpv4.handler.bind(port, host);
-				console.log((new Date()) + ' UDP listener is started: listening on port ' + transport.port);
+				sipsTrace('UDP listener is started: listening on port ' + transport.port);
 				this.localTransportUdpIpv4.handler.on("message", function (msg, rinfo) {
 			    	var remoteTransport = new sipTransport();
 					
@@ -1834,7 +2011,7 @@ function sipTransportManager() {
 				this.localTransportTcpIpv6.handler = stream.createServer();
 				this.localTransportTcpIpv6.handler.listen(port, host);
 				this.localTransportTcpIpv6.handler.on('connection', function(sock) {
-				    console.log('connected ipv6: ' + sock.remoteAddress +':'+ sock.remotePort);
+					sipsTrace('connected ipv6: ' + sock.remoteAddress +':'+ sock.remotePort);
 				    // other stuff is the same from here
 				    sock.on('data', function(msg) {
 				    	var remoteTransport = new sipTransport();
@@ -1845,7 +2022,7 @@ function sipTransportManager() {
 				    	remoteTransport.protocol = protocol;	
 				    	remoteTransport.handler = sock;
 				    	
-						console.log('tcp ipv6 packet received: ' + msg);
+				    	sipsTrace('TCP ipv6 packet received: ' + msg);
 				        callback(msg, remoteTransport); 
 				    });
 				});
@@ -1854,9 +2031,9 @@ function sipTransportManager() {
 				this.localTransportTcpIpv4 = transport;
 				this.localTransportTcpIpv4.handler = stream.createServer();
 				this.localTransportTcpIpv4.handler.listen(port, host);
-				console.log((new Date()) + ' TCP listener is started: listening on port ' + transport.port);
+				sipsTrace('TCP listener is started: listening on port ' + transport.port);
 				this.localTransportTcpIpv4.handler.on('connection', function(sock) {
-				    console.log('connected ipv4: ' + sock.remoteAddress +':'+ sock.remotePort);
+					sipsTrace('connected ipv4: ' + sock.remoteAddress +':'+ sock.remotePort);
 				    // other stuff is the same from here
 				    sock.on('data', function(msg) {
 				    	var remoteTransport = new sipTransport();
@@ -1867,7 +2044,7 @@ function sipTransportManager() {
 				    	remoteTransport.protocol = protocol;	
 				    	remoteTransport.handler = sock;
 				    	
-						console.log('tcp ipv4 packet received: ' + msg);
+				    	sipsTrace('TCP ipv4 packet received: ' + msg);
 				        callback(msg, remoteTransport); 
 				    });
 				});
@@ -1884,7 +2061,7 @@ function sipTransportManager() {
 			} else {
 				
 				function wsHttpServer(request, response) {
-				    console.log((new Date()) + ' Received request for ' + request.url);
+					sipsTrace('Received request for ' + request.url);
 				    response.writeHead(404);
 				    response.end();
 				};
@@ -1892,7 +2069,7 @@ function sipTransportManager() {
 				var server = http.createServer(wsHttpServer);
 				
 				server.listen(transport.port, function() {
-				    console.log((new Date()) + ' WebSocket listener is started: listening on port ' + transport.port);
+					sipsTrace('WebSocket listener is started: listening on port ' + transport.port);
 				});
 				
 				this.localTransportWsIpv4 = transport;
@@ -1903,7 +2080,7 @@ function sipTransportManager() {
 				
 				function wsRequestHandler(request) {
 				    var connection = request.accept('sip', request.origin);
-				    console.log('WS Connection accepted.');
+				    sipsTrace('WS Connection accepted.');
 				    // add to remote transport list
 			    	var remoteTransport = new sipTransport();
 					
@@ -1917,12 +2094,12 @@ function sipTransportManager() {
 			    	
 				    connection.on('message', function(message) {
 		            	var transport = findTransportByHandler(connection);
-			    		if( transport != 'undefined' ) {
+			    		if( transport !== 'undefined' ) {
 				            callback(message.utf8Data, transport); 	
 			    		}
 				    });
-				    connection.on('close', function(reasonCode, description) {
-				    	console.log('WS Peer ' + connection.remoteAddress + ' disconnected.');
+				    sipsTrace('close', function(reasonCode, description) {
+				    	sipsTrace('WS Peer ' + connection.remoteAddress + ' disconnected.');
 				    	deleteRemoteTransport(connection);
 				    });
 				};
@@ -1996,18 +2173,18 @@ function sipTransportManager() {
 		switch(remoteTransport.protocol) {
 		case TRANSPORT.TR_UDP:		
 			if(remoteTransport.isIpv6) {
-				console.log('IPv6 UDP message is ' + message);
+				sipsTrace('IPv6 UDP message is ' + message);
 				this.localTransportUdpIpv6.handler.send(message, 0, message.length, 
 						remoteTransport.port, remoteTransport.host, function(err, bytes) {
 				    if (err) throw err;
-				    console.log('UDP message sent to ' + remoteTransport.host +':'+ remoteTransport.port);
+				    sipsTrace('UDP message sent to ' + remoteTransport.host +':'+ remoteTransport.port);
 				}	);
 				
 			} else {
-				console.log('UDP sent to ' + + remoteTransport.host +':'+ remoteTransport.port);
-				console.log('<<<<<<<<<<<<');
-				console.log(message.toString());
-				console.log('<<<<<<<<<<<<');
+				sipsTrace('UDP sent to ' + + remoteTransport.host +':'+ remoteTransport.port);
+				sipsTrace('<<<<<<<<<<<<');
+				sipsTrace(message.toString());
+				sipsTrace('<<<<<<<<<<<<');
 				this.localTransportUdpIpv4.handler.send(message, 0, message.length, 
 						remoteTransport.port, remoteTransport.host, function(err, bytes) {
 				    if (err) throw err;
@@ -2015,19 +2192,19 @@ function sipTransportManager() {
 			}	
 			break;
 		case TRANSPORT.TR_TCP:
-			console.log(message.toString());
+			sipsTrace(message.toString());
 			var client = stream.connect(remoteTransport.port, remoteTransport.host);
 			client.write(message);
 			client.on('data', function(msg) {
-				  console.log(msg.toString());
+				  sipsTrace(msg.toString());
 				  //////callback(msg, remoteTransport.port, remoteTransport.host);
 				});
 			break;
 		case TRANSPORT.TR_WS:
-			console.log('WS sent to ' + + remoteTransport.host +':'+ remoteTransport.port);
-			console.log('<<<<<<<<<<<<');
-			console.log(message.toString());
-			console.log('<<<<<<<<<<<<');
+			sipsTrace('WS sent to ' + + remoteTransport.host +':'+ remoteTransport.port);
+			sipsTrace('<<<<<<<<<<<<');
+			sipsTrace(message.toString());
+			sipsTrace('<<<<<<<<<<<<');
 			remoteTransport.handler.send(inmessage.toString());
 			break;
 		default:
@@ -2064,7 +2241,32 @@ function sipRegistration() {
 	this.cSeq = '';
 	this.fromTag = '';
 	this.toTag = '';
-	this.expire = 0;
+	this.expires = 0;
+	
+	// registration timer
+	var rTimer;
+	
+	this.startTimer = function(remove) {
+		sipsTrace('start registration timer number ', this.number);
+		rTimer = setTimeout(remove, ( this.expires * 1000 ), this);
+	};
+
+	this.updateTimer = function(val, remove) {
+		sipsTrace('update registration timer for ', this.number);
+		if( rTimer !== undefined ) {
+			clearTimeout( rTimer );
+		}
+		this.expire = val;
+		rTimer = setTimeout(remove, 
+				( this.expires * 1000 ), this);		
+	};
+	
+	this.stopTimer = function() {
+		sipsTrace('stop registration timer for ', this.number);
+		if( rTimer !== undefined ) {
+			clearTimeout( rTimer );
+		}		
+	};	
 	
 	// received transport (useful for WebSocket connections)
 	this.transport = ''; 
@@ -2076,7 +2278,7 @@ function sipRegistration() {
 			cSeq : this.cSeq,
 			fromTag : this.fromTag,
 			toTag : this.toTag,
-			expire : this.expire
+			expires : this.expires
 			};
 	};
 }
@@ -2090,7 +2292,7 @@ function sipRegistrationManager(sipProcessingInstance) {
 			// re-send treatment
 		} else {
 			// new registration
-			console.log('sipRegistrationManager:processRegister - new registration');
+			sipsTrace('sipRegistrationManager:processRegister - new registration');
 			var localTransport = sipProcessingInstance.GetSipTransport().getLocal(remoteTransport.enableIpv6, 
 																					remoteTransport.protocol);
 			// create transaction
@@ -2124,27 +2326,43 @@ function sipRegistrationManager(sipProcessingInstance) {
 	};
 	
 	this.addRegistration = function(registration) {
+		sipsTrace('sipRegistrationManager:addRegistration length before is ' + registrationInfo.length);
 		registrationInfo.push(registration);
+		sipsTrace('sipRegistrationManager:addRegistration length after is ' + registrationInfo.length);
 	};
 	
 	this.findRegistration = function(number, callId) {
-		for (var i = 0, len = registrationInfo.length; i < len; i++) {
+		var l = registrationInfo.length;
+		for (var i = 0; i < l; i++) {
 			if( ( registrationInfo[i].number == number ) &&
 					( registrationInfo[i].callId == callId ) )  {
 				return registrationInfo[i];
 			}
 		}	
 	};
+
+	this.findUserRegistration = function(number) {
+		var l = registrationInfo.length;
+		for (var i = 0; i < l; i++) {
+			if( registrationInfo[i].number == number )  {
+				return registrationInfo[i];
+			}
+		}	
+	};	
 	
 	this.processRegistration = function(registration) {
 		// try to find the same registration in local registrationInfo
-		var existingTransaction = this.findRegistration(registration.number, registration.callId);
-		if( existingTransaction !== undefined ) {
+		var existingRegistration = this.findRegistration(registration.number, registration.callId);
+		if( existingRegistration !== undefined ) {
 			if( registration.expires !== 0 ) {
-				
+				sipsTrace('sipRegistrationManager:processRegistration - existing registration');
+				existingRegistration.updateTimer(registration.expires, this.deleteRegistration);
 			} else {
+				sipsTrace('sipRegistrationManager:processRegistration - existing registration with 0 expires');
+				// stop timer
+				existingRegistration.stopTimer();
 				// end of expiration
-				this.deleteRegistration(existingTransaction);
+				this.deleteRegistration(existingRegistration);
 			}			
 		} else {
 			// new registration
@@ -2152,22 +2370,26 @@ function sipRegistrationManager(sipProcessingInstance) {
 				if( registration.expires === -1 ) {
 					// a value by default could be taken
 				}
+				sipsTrace('sipRegistrationManager:processRegistration - new registration');
+				// start registration timer
+				registration.startTimer(this.deleteRegistration);
 				// add registration to local storage
 				this.addRegistration(registration);
 			} else {
+				sipsTrace('sipRegistrationManager:processRegistration - new registration with 0 expires');
 				// end of expiration
 				// do nothing
 			}
 		}
-
 	};
+	
 	this.deleteRegistration = function(registration) {
-		console.log('sipRegistrationManager:deleteRegistration length before is ' + registrationInfo.length);
+		sipsTrace('sipRegistrationManager:deleteRegistration length before is ' + registrationInfo.length);
 		var index = registrationInfo.indexOf(registration);
 		if (index > -1) {
 			registrationInfo.splice(index, 1);
 		}
-		console.log('sipRegistrationManager:deleteRegistration length before is ' + registrationInfo.length);
+		sipsTrace('sipRegistrationManager:deleteRegistration length after is ' + registrationInfo.length);
 	};
 }
 
@@ -2249,17 +2471,17 @@ function sipCallProcessing(sipProcessingInstance) {
 	};
 
 	var deleteConnection = function(connection) {
-		// console.log('sipCallProcessing:deleteConnection length before is ' + connectionStorage.length);
+		// sipsTrace('sipCallProcessing:deleteConnection length before is ' + connectionStorage.length);
 		var index = connectionStorage.indexOf(connection);
 		if (index > -1) {
 			connectionStorage.splice(index, 1);
 		}
-		// console.log('sipCallProcessing:deleteConnection length after is ' + connectionStorage.length);
+		// sipsTrace('sipCallProcessing:deleteConnection length after is ' + connectionStorage.length);
 	};	
 	
 	this.processInvite = function(recvMessage, remoteTransport, transaction) {
 		if( transaction !== undefined ) {
-			console.log('sipCallProcessing.processInvite INVITE retransmission');
+			sipsTrace('sipCallProcessing.processInvite INVITE retransmission');
 			
 		} else {
 
@@ -2276,9 +2498,9 @@ function sipCallProcessing(sipProcessingInstance) {
 			
 			var registrationInfo;
 			if(recvMessage.requestUri.user !== undefined ) {
-				registrationInfo = sipProcessingInstance.GetRegistration().findRegistration(recvMessage.requestUri.user);
+				registrationInfo = sipProcessingInstance.GetRegistration().findUserRegistration(recvMessage.requestUri.user);
 			}
-			console.log('sipCallProcessing.processInvite try to find a registration');
+			sipsTrace('sipCallProcessing.processInvite try to find a registration');
 			// push it to the active transaction's list
 			sipProcessingInstance.GetSipTransaction().addTransaction(inviteTransaction);
 			//
@@ -2289,7 +2511,7 @@ function sipCallProcessing(sipProcessingInstance) {
 					// re-INVITE scenario
 					this.updateConnection(inviteTransaction, connection);
 				} else {
-					console.log('sipCallProcessing.processInvite registration isn\'t found');
+					sipsTrace('sipCallProcessing.processInvite registration isn\'t found');
 					inviteTransaction.createResponse(SIP_STATUS_CODE.SC_404);
 					sipProcessingInstance.GetSipTransport().send(remoteTransport, inviteTransaction.message);		
 				}
@@ -2309,9 +2531,9 @@ function sipCallProcessing(sipProcessingInstance) {
 	
 	this.processCancel = function(recvMessage, remoteTransport, transaction) {
 		if( transaction !== undefined ) {
-			console.log('sipCallProcessing.processCancel CANCEL retransmission');
+			sipsTrace('sipCallProcessing.processCancel CANCEL retransmission');
 		} else {
-			console.log('sipCallProcessing.processCancel retransmission');
+			sipsTrace('sipCallProcessing.processCancel retransmission');
 			var localTransport = sipProcessingInstance.GetSipTransport().getLocal(remoteTransport.enableIpv6, remoteTransport.protocol);
 			// create transaction
 			var cancelTransaction = new sipInviteServerTransaction(SIP_METHOD.SM_CANCEL, 
@@ -2320,19 +2542,19 @@ function sipCallProcessing(sipProcessingInstance) {
 			cancelTransaction.init(recvMessage.callIdValue);
 			cancelTransaction.receiveRequest(recvMessage);
 			// verify if destination is exist via registration resolution
-			var registrationInfo = sipProcessingInstance.GetRegistration().findRegistration(recvMessage.requestUri.user);
-			console.log('sipCallProcessing.processCancel try to find a registration');
+			var registrationInfo = sipProcessingInstance.GetRegistration().findUserRegistration(recvMessage.requestUri.user);
+			sipsTrace('sipCallProcessing.processCancel try to find a registration');
 			// push it to the active transaction's list
 			sipProcessingInstance.GetSipTransaction().addTransaction(cancelTransaction);
 			
 			var connection = findConnection(cancelTransaction.transaction.callId);
 			if( connection !== undefined ) {
-				console.log('sipCallProcessing:cancelTransaction connection is found');
+				sipsTrace('sipCallProcessing:cancelTransaction connection is found');
 				// TODO state transaction update
 				// propagate response to peer connection
 				this.cancelConnection(cancelTransaction, connection);
 			} else {
-				console.log('sipCallProcessing:processCancel response for unknown connection is received');
+				sipsTrace('sipCallProcessing:processCancel response for unknown connection is received');
 				cancelTransaction.createResponse(SIP_STATUS_CODE.SC_404);
 				sipProcessingInstance.GetSipTransport().send(remoteTransport, cancelTransaction.message);
 			}		
@@ -2344,15 +2566,15 @@ function sipCallProcessing(sipProcessingInstance) {
 		var localTransport;
 		var remoteTransport;
 		
-		console.log('sipCallProcessing.cancelConnection peer connection is '+ connection.peerConnection.getCallId());
+		sipsTrace('sipCallProcessing.cancelConnection peer connection is '+ connection.peerConnection.getCallId());
 		
-		var registrationInfo = sipProcessingInstance.GetRegistration().findRegistration(connection.peerConnection.getNumber());
+		var registrationInfo = sipProcessingInstance.GetRegistration().findUserRegistration(connection.peerConnection.getNumber());
 		if( registrationInfo !== undefined ) {
-			console.log('sipCallProcessing.cancelConnection transport for peer connection is found');
+			sipsTrace('sipCallProcessing.cancelConnection transport for peer connection is found');
 			remoteTransport = registrationInfo.transport;
 			localTransport = sipProcessingInstance.GetSipTransport().getLocal(remoteTransport.isIpv6, remoteTransport.protocol);
 			var cancelTransaction = new sipNonInviteClientTransaction(SIP_METHOD.SM_CANCEL, sipProcessingInstance.GetSipStack(), localTransport, remoteTransport);
-			console.log('sipCallProcessing.clearConnection create CANCEL message');
+			sipsTrace('sipCallProcessing.clearConnection create CANCEL message');
 			var peerConnection = connection.peerConnection;
 			
 			var rTag='';
@@ -2377,7 +2599,7 @@ function sipCallProcessing(sipProcessingInstance) {
 			}
 			sipProcessingInstance.GetSipTransport().send(remoteTransport, cancelTransaction.message);
 		} else {
-			console.log('sipCallProcessing.cancelConnection transport for peer connection isn\'t found');
+			sipsTrace('sipCallProcessing.cancelConnection transport for peer connection isn\'t found');
 		}
 	};
 	
@@ -2391,10 +2613,10 @@ function sipCallProcessing(sipProcessingInstance) {
 		if( remoteTransportProtocol === TRANSPORT.TR_WS ) {
 			remoteTransport = registrationInfo.transport;
 			if(remoteTransport === undefined) {
-				console.log('sipCallProcessing.makeCall no transport for WebSocket connection');
+				sipsTrace('sipCallProcessing.makeCall no transport for WebSocket connection');
 				return;
 			} else {
-				console.log('sipCallProcessing.makeCall find stored transport for WebSocket connection');
+				sipsTrace('sipCallProcessing.makeCall find stored transport for WebSocket connection');
 				localTransport = sipProcessingInstance.GetSipTransport().getLocal(remoteTransport.isIpv6, remoteTransport.protocol);
 		
 			}
@@ -2409,8 +2631,11 @@ function sipCallProcessing(sipProcessingInstance) {
 		var callerConnection = new sipConnection(transaction.remoteMessage.fromUri.user, 
 				transaction.remoteMessage.callIdValue, CONNECTION_TYPE.CONNECTION_INBOUND);
 		// create an Invite client transaction
-		var inviteTransaction = new sipInviteClientTransaction(SIP_METHOD.SM_INVITE, sipProcessingInstance.GetSipStack(), localTransport, remoteTransport);
-		console.log('sipCallProcessing.makeCall initial INVITE message');
+		var inviteTransaction = new sipInviteClientTransaction(SIP_METHOD.SM_INVITE, 
+								sipProcessingInstance.GetSipStack(), 
+								localTransport, remoteTransport, 
+								this.reSendMessage, sipProcessingInstance.GetSipTransaction().deleteTransaction);
+		sipsTrace('sipCallProcessing.makeCall initial INVITE message');
 		// create an empty INVITE message
 		inviteTransaction.init();
 		inviteTransaction.createRequest(SIP_METHOD.SM_INVITE, number, transaction.remoteMessage.getSdp(), transaction.remoteMessage.contentType);
@@ -2452,20 +2677,27 @@ function sipCallProcessing(sipProcessingInstance) {
 		// store call / connection state 
 	};
 
+	this.reSendMessage = function(transaction, remoteTransport) {
+		sipsTrace('sipCallProcessing.reSendMessage');
+		sipProcessingInstance.GetSipTransport().send(remoteTransport, transaction.message);
+	};
+	
 	// hold/retrieve/SDP changing operations
 	this.updateConnection = function(transaction, connection) {
 		var localTransport;
 		var remoteTransport;
 		
-		console.log('sipCallProcessing.updateConnection peer connection is '+ connection.peerConnection.getCallId());
+		sipsTrace('sipCallProcessing.updateConnection peer connection is '+ connection.peerConnection.getCallId());
 		
-		var registrationInfo = sipProcessingInstance.GetRegistration().findRegistration(connection.peerConnection.getNumber());
+		var registrationInfo = sipProcessingInstance.GetRegistration().findUserRegistration(connection.peerConnection.getNumber());
 		if( registrationInfo !== undefined ) {
-			console.log('sipCallProcessing.updateConnection transport for peer connection is found');
+			sipsTrace('sipCallProcessing.updateConnection transport for peer connection is found');
 			remoteTransport = registrationInfo.transport;
 			localTransport = sipProcessingInstance.GetSipTransport().getLocal(remoteTransport.isIpv6, remoteTransport.protocol);
-			var inviteTransaction = new sipInviteClientTransaction(SIP_METHOD.SM_INVITE, sipProcessingInstance.GetSipStack(), localTransport, remoteTransport);
-			console.log('sipCallProcessing.updateConnection create INVITE message');
+			var inviteTransaction = new sipInviteClientTransaction(SIP_METHOD.SM_INVITE, 
+					sipProcessingInstance.GetSipStack(), localTransport, remoteTransport,this.reSendMessage, 
+					sipProcessingInstance.GetSipTransaction().deleteTransaction);
+			sipsTrace('sipCallProcessing.updateConnection create INVITE message');
 			var peerConnection = connection.peerConnection;
 			
 			peerConnection.cSeq += 1;
@@ -2488,23 +2720,23 @@ function sipCallProcessing(sipProcessingInstance) {
 			}
 			sipProcessingInstance.GetSipTransport().send(remoteTransport, inviteTransaction.message);
 		} else {
-			console.log('sipCallProcessing.updateConnection transport for peer connection isn\'t found');
+			sipsTrace('sipCallProcessing.updateConnection transport for peer connection isn\'t found');
 		}	
 	};
 	
 	this.processAck = function(recvMessage, remoteTransport, transaction) {
-		console.log('sipCallProcessing.processAck ACK processing');
+		sipsTrace('sipCallProcessing.processAck ACK processing');
 		transaction.receiveRequest(recvMessage);
 		// find connection
 		var connection = findConnection(transaction.transaction.callId);
 		if( connection !== undefined ) {
-			console.log('sipCallProcessing:processAck connection is found');
+			sipsTrace('sipCallProcessing:processAck connection is found');
 			// TODO state transaction update
 			// propagate response to peer connection
-			console.log('searching transaction is '+ connection.peerConnection.getCallId());
+			sipsTrace('searching transaction is '+ connection.peerConnection.getCallId());
 			var peerTransaction = sipProcessingInstance.GetSipTransaction().findExistingTransaction(connection.peerConnection.getCallId(), SIP_METHOD.SM_INVITE);
 			if( peerTransaction !== undefined ) {
-				console.log('sipCallProcessing:processAck peer transaction is found');
+				sipsTrace('sipCallProcessing:processAck peer transaction is found');
 
 				peerTransaction.createRequest(SIP_METHOD.SM_ACK, recvMessage.requestUri.user, 
 						transaction.remoteMessage.getSdp(), transaction.remoteMessage.contentType);
@@ -2523,10 +2755,10 @@ function sipCallProcessing(sipProcessingInstance) {
 				sipProcessingInstance.GetSipTransaction().deleteTransaction(transaction);
 				
 			} else {
-				console.log('sipCallProcessing:processAck peer transaction isn\'t found');
+				sipsTrace('sipCallProcessing:processAck peer transaction isn\'t found');
 			}
 		} else {
-			console.log('sipCallProcessing:processAck response for unknown connection is received');
+			sipsTrace('sipCallProcessing:processAck response for unknown connection is received');
 		}
 	};	
 	
@@ -2541,15 +2773,15 @@ function sipCallProcessing(sipProcessingInstance) {
 
 		// push it to the active transaction's list
 		sipProcessingInstance.GetSipTransaction().addTransaction(byeTransaction);
-		console.log('sipCallProcessing.processBye try to find a connection');
+		sipsTrace('sipCallProcessing.processBye try to find a connection');
 		var connection = findConnection(byeTransaction.transaction.callId);
 		if( connection !== undefined ) {
-			console.log('sipCallProcessing:processBye connection is found');
+			sipsTrace('sipCallProcessing:processBye connection is found');
 			// TODO state transaction update
 			// propagate response to peer connection
 			this.clearConnection(byeTransaction, connection);
 		} else {
-			console.log('sipCallProcessing:processBye response for unknown connection is received');
+			sipsTrace('sipCallProcessing:processBye response for unknown connection is received');
 			byeTransaction.createResponse(SIP_STATUS_CODE.SC_404);
 			sipProcessingInstance.GetSipTransport().send(remoteTransport, byeTransaction.message);
 		}		
@@ -2559,15 +2791,15 @@ function sipCallProcessing(sipProcessingInstance) {
 		var localTransport;
 		var remoteTransport;
 		
-		console.log('sipCallProcessing.clearConnection peer connection is '+ connection.peerConnection.getCallId());
+		sipsTrace('sipCallProcessing.clearConnection peer connection is '+ connection.peerConnection.getCallId());
 		
-		var registrationInfo = sipProcessingInstance.GetRegistration().findRegistration(connection.peerConnection.getNumber());
+		var registrationInfo = sipProcessingInstance.GetRegistration().findUserRegistration(connection.peerConnection.getNumber());
 		if( registrationInfo !== undefined ) {
-			console.log('sipCallProcessing.clearConnection transport for peer connection is found');
+			sipsTrace('sipCallProcessing.clearConnection transport for peer connection is found');
 			remoteTransport = registrationInfo.transport;
 			localTransport = sipProcessingInstance.GetSipTransport().getLocal(remoteTransport.isIpv6, remoteTransport.protocol);
 			var byeTransaction = new sipNonInviteClientTransaction(SIP_METHOD.SM_BYE, sipProcessingInstance.GetSipStack(), localTransport, remoteTransport);
-			console.log('sipCallProcessing.clearConnection create BYE message');
+			sipsTrace('sipCallProcessing.clearConnection create BYE message');
 			var peerConnection = connection.peerConnection;
 			
 			peerConnection.cSeq += 1;
@@ -2591,32 +2823,32 @@ function sipCallProcessing(sipProcessingInstance) {
 			}
 			sipProcessingInstance.GetSipTransport().send(remoteTransport, byeTransaction.message);
 		} else {
-			console.log('sipCallProcessing.clearConnection transport for peer connection isn\'t found');
+			sipsTrace('sipCallProcessing.clearConnection transport for peer connection isn\'t found');
 		}
 	};	
 	
 	// process 100 - 699 responses
 	this.processResponse = function(recvMessage, remoteTransport, transaction) {
-		console.log('sipCallProcessing:processResponse message response');
+		sipsTrace('sipCallProcessing:processResponse message response');
 		// store received message
 		transaction.receiveResponse(recvMessage);
 		
 		if(recvMessage.statusCode == SIP_STATUS_CODE.SC_100) {
-			console.log('sipCallProcessing:processResponse 100 Trying is received - ignore it');
+			sipsTrace('sipCallProcessing:processResponse 100 Trying is received - ignore it');
 			// TODO don't resend status Trying, just state transaction update
 			return;
 		}
-		console.log('sipCallProcessing:processResponse trying to find a connection for ' + transaction.transaction.callId);
+		sipsTrace('sipCallProcessing:processResponse trying to find a connection for ' + transaction.transaction.callId);
 		// find connection
 		var connection = findConnection(transaction.transaction.callId);
 		if( connection !== undefined ) {
-			console.log('sipCallProcessing:processResponse connection is found');
+			sipsTrace('sipCallProcessing:processResponse connection is found');
 			// TODO state transaction update
 			// propagate response to peer connection
-			console.log('searching transaction is '+ connection.peerConnection.getCallId());
+			sipsTrace('searching transaction is '+ connection.peerConnection.getCallId());
 			var peerTransaction = sipProcessingInstance.GetSipTransaction().findExistingTransaction(connection.peerConnection.getCallId(), recvMessage.cSeqMethod);
 			if( peerTransaction !== undefined ) {
-				console.log('sipCallProcessing:processResponse peer transaction is found');
+				sipsTrace('sipCallProcessing:processResponse peer transaction is found');
 				peerTransaction.createResponse(recvMessage.statusCode, recvMessage.getSdp(), recvMessage.contentType);
 				
 				// copy/add some headers here
@@ -2626,7 +2858,7 @@ function sipCallProcessing(sipProcessingInstance) {
 					// TODO find an apropriate transport
 				}
 			} else {
-				console.log('sipCallProcessing:processResponse peer transaction isn\'t found');
+				sipsTrace('sipCallProcessing:processResponse peer transaction isn\'t found');
 			}
 			// update some information, only for INVITE transaction
 			if(recvMessage.cSeqMethod == SIP_METHOD.SM_INVITE) {
@@ -2641,7 +2873,7 @@ function sipCallProcessing(sipProcessingInstance) {
 				deleteConnection(connection);
 			}
 		} else {
-			console.log('sipCallProcessing:processResponse response for unknown connection is received');
+			sipsTrace('sipCallProcessing:processResponse response for unknown connection is received');
 		}
 	};
 }
@@ -2677,7 +2909,8 @@ function sipProcessingInstance() {
 	
 	this.start = function(configuration) {
 		// create an instance of SIP stack
-		console.log('SIP Server initialization');
+		sipsTrace('SIP Server instance initialization');
+		sipsTrace('Init timestamp: ' + Date());
 		sipStackInstance = new sipStack();
 		// sip transaction storage
 		sipTransactionInstance = new sipTransactionStorage();
@@ -2696,138 +2929,138 @@ function sipProcessingInstance() {
 		// initialize call processing module
 		sipCallProcessingInstance = new sipCallProcessing(this);
 
-		console.log('SIP Server initialization finished successfully');
+		sipsTrace('SIP Server initialization finished successfully');
 	};
 	this.onUdpReceive = function(msg, remoteTransport) {
-		 console.log("UDP received from " + remoteTransport.host + ":" + remoteTransport.port);
-		 console.log('>>>>>>>>>>>>');
-		 console.log('' + msg);
-		 console.log('>>>>>>>>>>>>');
-		 onData(msg, remoteTransport);
+		sipsTrace("UDP received from " + remoteTransport.host + ":" + remoteTransport.port);
+		sipsTrace('>>>>>>>>>>>>');
+		sipsTrace('' + msg);
+		sipsTrace('>>>>>>>>>>>>');
+		onData(msg, remoteTransport);
 	};
 	this.onTcpReceive = function(msg, host, port) {
-		 console.log("TCP received from " + host + ":" + port);
-		 console.log('>>>>>>>>>>>>');
-		 console.log(msg);
-		 console.log('>>>>>>>>>>>>');
-		 onData(msg, host, port);
+		sipsTrace("TCP received from " + host + ":" + port);
+		sipsTrace('>>>>>>>>>>>>');
+		sipsTrace(msg);
+		sipsTrace('>>>>>>>>>>>>');
+		onData(msg, host, port);
 	};
 	this.onWsReceive = function(msg, remoteTransport) {
-		 console.log("WS received from " + remoteTransport.host + ":" + remoteTransport.port);
-		 console.log('>>>>>>>>>>>>');
-		 console.log(msg);
-		 console.log('>>>>>>>>>>>>');
-		 onData(msg, remoteTransport);
+		sipsTrace("WS received from " + remoteTransport.host + ":" + remoteTransport.port);
+		sipsTrace('>>>>>>>>>>>>');
+		sipsTrace(msg);
+		sipsTrace('>>>>>>>>>>>>');
+		onData(msg, remoteTransport);
 	};
 	
 	var onData = function(data, remoteTransport) {
-		console.log('sipServer:onData packet is received');
+		sipsTrace('sipServer:onData packet is received');
 		// parse received message
 		var recvMessage = new sipMessage();
 		var rc = recvMessage.parseString(data.toString());
 		if( rc == SIPST_STATUS.SIPSC_SUCCESS ) {
 			// try to find a transaction and process the message
-			console.log('sipServer:onData try to find an assotiated transaction');
+			sipsTrace('sipServer:onData try to find an assotiated transaction');
 			var transaction = sipTransactionInstance.findTransaction(recvMessage);
 			
 			if( transaction == undefined) {
-				console.log('sipServer:onData new transaction');
+				sipsTrace('sipServer:onData new transaction');
 				if(recvMessage.statusCode.length > 0) {
-					console.log('sipServer:onData unknown response - just ignore it');
+					sipsTrace('sipServer:onData unknown response - just ignore it');
 				}
 				else {
-					console.log('sipServer:onData new request is received');
+					sipsTrace('sipServer:onData new request is received');
 					switch(recvMessage.method)
 					{
 					case SIP_METHOD.SM_REGISTER:
-						console.log('sipServer:onData REGISTER message');
+						sipsTrace('sipServer:onData REGISTER message');
 						sipRegistrationInstance.processRegister(recvMessage, remoteTransport);
 						break;
 					case SIP_METHOD.SM_INVITE:
-						console.log('sipServer:onData INVITE message');
+						sipsTrace('sipServer:onData INVITE message');
 						sipCallProcessingInstance.processInvite(recvMessage, remoteTransport);
 						break;
 					case SIP_METHOD.SM_CANCEL:
-						console.log('sipServer:onData CANCEL message');
+						sipsTrace('sipServer:onData CANCEL message');
 						sipCallProcessingInstance.processCancel(recvMessage, remoteTransport);
 						break;
 					case SIP_METHOD.SM_ACK:
-						console.log('sipServer:onData ACK message');
+						sipsTrace('sipServer:onData ACK message');
 						sipCallProcessingInstance.processAck(recvMessage, remoteTransport);
 						break;
 					case SIP_METHOD.SM_BYE:
-						console.log('sipServer:onData BYE message');
+						sipsTrace('sipServer:onData BYE message');
 						sipCallProcessingInstance.processBye(recvMessage, remoteTransport);
 						break;
 					default:
-						console.log('sipServer:onData - the treatment of ' + recvMessage.method + ' method isn\'t implemented yet');
+						sipsTrace('sipServer:onData - the treatment of ' + recvMessage.method + ' method isn\'t implemented yet');
 						break;
 					};
 				}
 			} else {
-				console.log('sipServer:onData existing transaction');
+				sipsTrace('sipServer:onData existing transaction');
 				if(recvMessage.statusCode > 0) {
-					console.log('sipServer:onData new response for existing transaction is received');
+					sipsTrace('sipServer:onData new response for existing transaction is received');
 					switch(recvMessage.cSeqMethod)
 					{
 					case SIP_METHOD.SM_REGISTER:
-						console.log('sipServer:onData REGISTER message');
+						sipsTrace('sipServer:onData REGISTER message');
 						/// TODO sipRegistrationInstance.processResponse(recvMessage, remoteTransport);
 						break;
 					case SIP_METHOD.SM_INVITE:
-						console.log('sipServer:onData INVITE message response');
+						sipsTrace('sipServer:onData INVITE message response');
 						sipCallProcessingInstance.processResponse(recvMessage, remoteTransport, transaction);
 						break;
 					case SIP_METHOD.SM_CANCEL:
-						console.log('sipServer:onData CANCEL message response');
+						sipsTrace('sipServer:onData CANCEL message response');
 						sipCallProcessingInstance.processResponse(recvMessage, remoteTransport, transaction);
 						break;
 					case SIP_METHOD.SM_BYE:
-						console.log('sipServer:onData BYE message response');
+						sipsTrace('sipServer:onData BYE message response');
 						sipCallProcessingInstance.processResponse(recvMessage, remoteTransport, transaction);
 						break;
 					default:
-						console.log('sipServer:onData - the treatment of response for ' + recvMessage.cSeqMethod + 
+						sipsTrace('sipServer:onData - the treatment of response for ' + recvMessage.cSeqMethod + 
 								' method isn\'t implemented yet');
 						break;
 					};
 				}
 				else {
-					console.log('sipServer:onData new request for existing transaction is received');
+					sipsTrace('sipServer:onData new request for existing transaction is received');
 					switch(recvMessage.method)
 					{
 					case SIP_METHOD.SM_REGISTER:
-						console.log('sipServer:onData REGISTER message');
+						sipsTrace('sipServer:onData REGISTER message');
 						sipRegistrationInstance.processRegister(recvMessage, remoteTransport, transaction);
 						break;
 					case SIP_METHOD.SM_INVITE:
-						console.log('sipServer:onData INVITE message');
+						sipsTrace('sipServer:onData INVITE message');
 						sipCallProcessingInstance.processInvite(recvMessage, remoteTransport, transaction);
 						break;
 					case SIP_METHOD.SM_CANCEL:
-						console.log('sipServer:onData CANCEL message');
+						sipsTrace('sipServer:onData CANCEL message');
 						sipCallProcessingInstance.processCancel(recvMessage, remoteTransport, transaction);
 						break;
 					case SIP_METHOD.SM_ACK:
-						console.log('sipServer:onData ACK message');
+						sipsTrace('sipServer:onData ACK message');
 						sipCallProcessingInstance.processAck(recvMessage, remoteTransport, transaction);
 						break;
 					case SIP_METHOD.SM_BYE:
-						console.log('sipServer:onData BYE message');
+						sipsTrace('sipServer:onData BYE message');
 						sipCallProcessingInstance.processBye(recvMessage, remoteTransport, transaction);
 						break;
 					default:
-						console.log('sipServer:onData - the treatment of ' + recvMessage.method + ' method isn\'t implemented yet');
+						sipsTrace('sipServer:onData - the treatment of ' + recvMessage.method + ' method isn\'t implemented yet');
 						break;
 					};
 				}	
 			}
 		} else {
 			if( rc == SIPST_STATUS.SIPSC_MESSAGE_KEEPALIVE ) {
-				console.log('sipServer:onData ping is received, pong is sent');
+				sipsTrace('sipServer:onData ping is received, pong is sent');
 				sipTransportInstance.send(remoteTransport, "\r\n\r\n");
 			} else {
-				console.log('sipServer:onData error in packet parsing');
+				sipsTrace('sipServer:onData error in packet parsing');
 			}
 			
 		}
