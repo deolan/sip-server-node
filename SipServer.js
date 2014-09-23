@@ -1495,8 +1495,8 @@ function sipInviteClientTransaction(method, stack, localTransport, remoteTranspo
 			contact.uri.params.push(sipParameter(SIP_PARAMETER.SP_TRANSPORT,'ws'));
 			break;
 		};
-		timerD = setTimeout(timerHandler, 
-				stack.getTimerValue(SIP_TIMER.TIMER_D, TRANSPORT.TR_UDP), SIP_TIMER.TIMER_D, this);
+		timerB = setTimeout(timerHandler, 
+				stack.getTimerValue(SIP_TIMER.TIMER_B, TRANSPORT.TR_UDP), SIP_TIMER.TIMER_B, this);
 		
 		this.message.contactHeader.push(contact);
 		// cseq	
@@ -1521,7 +1521,9 @@ function sipInviteClientTransaction(method, stack, localTransport, remoteTranspo
 				if( timerACounter <= 8 ) {
 					timerACounter += 1;
 					sipsTrace('calling state - message retransmission');
-					send(transaction, transaction.remoteTransport);
+					if(send !== undefined) {
+						send(transaction, transaction.remoteTransport);
+					}
 					timerA = setTimeout(timerHandler, 
 							( stack.getTimerValue(SIP_TIMER.TIMER_A, TRANSPORT.TR_UDP) * timerACounter), 
 							SIP_TIMER.TIMER_A, transaction);
@@ -1533,11 +1535,9 @@ function sipInviteClientTransaction(method, stack, localTransport, remoteTranspo
 			break;
 		case SIP_TIMER.TIMER_B:
 			sipsTrace('timer B is fired');
-			remove(transaction);
-			break;
-		case SIP_TIMER.TIMER_D:
-			sipsTrace('timer D is fired');
-			remove(transaction);
+			if(remove !== undefined) {
+				remove(transaction);
+			}
 			break;
 		};
 	};
@@ -1614,7 +1614,7 @@ function sipInviteClientTransaction(method, stack, localTransport, remoteTranspo
 	};
 }
 
-function sipNonInviteServerTransaction(method, stack, localTransport, remoteTransport) {
+function sipNonInviteServerTransaction(method, stack, localTransport, remoteTransport, remove) {
 	this.transaction = new sipTransaction();
 
 	this.transaction.method = method;
@@ -1624,6 +1624,8 @@ function sipNonInviteServerTransaction(method, stack, localTransport, remoteTran
 	this.localTransport = localTransport; 
 	this.remoteTransport = remoteTransport; 
 
+	var timerJ;
+	
 	this.init = function(callId, fromTag, toTag, cSeq) {
 		// transaction initialization
 		this.transaction.toTag = stack.getToTag();
@@ -1670,16 +1672,31 @@ function sipNonInviteServerTransaction(method, stack, localTransport, remoteTran
 		this.transaction.callId = this.remoteMessage.callIdValue;
 		this.transaction.seqNumber = this.remoteMessage.cSeq;
 		// change transaction state
-		this.transaction.state = SIP_NIS_TRANSACTION_STATE.NIS_TR_TRYING;	
+		switch(this.transaction.state) {
+		case SIP_NIS_TRANSACTION_STATE.NIS_NULL:
+			this.transaction.state = SIP_NIS_TRANSACTION_STATE.NIS_TR_TRYING;
+			break;
+		case SIP_NIS_TRANSACTION_STATE.NIS_TR_TRYING:
+		case SIP_NIS_TRANSACTION_STATE.NIS_TR_PROCEEDING:
+			// keep the current state
+			break;
+		default:
+			break;
+		};
+			
 		return;
 	};		
 	
 	this.createResponse = function(status, sdp, sdpType) {
+		// change state
 		switch(this.transaction.state) {
 		case SIP_NIS_TRANSACTION_STATE.NIS_TR_TRYING:
 			if(( status >= SIP_STATUS_CODE.SC_100 ) && ( status <= SIP_STATUS_CODE.SC_699 )) {
 				if( status >= SIP_STATUS_CODE.SC_200 ) {
 					this.transaction.state = SIP_NIS_TRANSACTION_STATE.NIS_TR_COMPLETED;
+					// start timer J
+					timerJ = setTimeout(timerHandler, 
+							stack.getTimerValue(SIP_TIMER.TIMER_J, TRANSPORT.TR_UDP), SIP_TIMER.TIMER_J, this);
 				} else {
 					this.transaction.state = SIP_NIS_TRANSACTION_STATE.NIS_TR_PROCEEDING;
 				}
@@ -1692,6 +1709,9 @@ function sipNonInviteServerTransaction(method, stack, localTransport, remoteTran
 			if(( status >= SIP_STATUS_CODE.SC_100 ) && ( status <= SIP_STATUS_CODE.SC_699 )) {
 				if( status >= SIP_STATUS_CODE.SC_200 ) {
 					this.transaction.state = SIP_NIS_TRANSACTION_STATE.NIS_TR_COMPLETED;
+					// start timer J
+					timerJ = setTimeout(timerHandler, 
+							stack.getTimerValue(SIP_TIMER.TIMER_J, TRANSPORT.TR_UDP), SIP_TIMER.TIMER_J, this);
 				} else {
 					this.transaction.state = SIP_NIS_TRANSACTION_STATE.NIS_TR_PROCEEDING;
 				}
@@ -1741,10 +1761,13 @@ function sipNonInviteServerTransaction(method, stack, localTransport, remoteTran
 		return;
 	};	
 	
-	this.timerHandler = function(timerType)
-	{
+	var timerHandler = function(timerType, transaction) {
 		switch(timerType) {
-		default:
+		case SIP_TIMER.TIMER_J:
+			sipsTrace('timer J is fired');
+			if(remove !== undefined) {
+				remove(transaction);
+			}
 			break;
 		};
 	};
@@ -2298,7 +2321,7 @@ function sipRegistrationManager(sipProcessingInstance) {
 			// create transaction
 			var registerTransaction = new sipNonInviteServerTransaction(SIP_METHOD.SM_REGISTER, 
 					sipProcessingInstance.GetSipStack(), 
-					localTransport, remoteTransport);
+					localTransport, remoteTransport, sipProcessingInstance.GetSipTransaction().deleteTransaction);
 			registerTransaction.init();
 			registerTransaction.receiveRequest(recvMessage);
 			// ask registration module
@@ -2318,10 +2341,8 @@ function sipRegistrationManager(sipProcessingInstance) {
 			registerTransaction.createResponse(SIP_STATUS_CODE.SC_200);
 			// push it to the active transaction's list
 			sipProcessingInstance.GetSipTransaction().addTransaction(registerTransaction);
-			// setd the response
+			// send the response
 			sipProcessingInstance.GetSipTransport().send(remoteTransport, registerTransaction.message);
-			// delete transaction
-			sipProcessingInstance.GetSipTransaction().deleteTransaction(registerTransaction);
 		}	
 	};
 	
@@ -2766,7 +2787,8 @@ function sipCallProcessing(sipProcessingInstance) {
 		var localTransport = sipProcessingInstance.GetSipTransport().getLocal(remoteTransport.enableIpv6, remoteTransport.protocol);
 		// create transaction
 		var byeTransaction = new sipNonInviteServerTransaction(SIP_METHOD.SM_BYE, 
-				sipProcessingInstance.GetSipStack(), localTransport, remoteTransport);
+				sipProcessingInstance.GetSipStack(), localTransport, remoteTransport,
+				sipProcessingInstance.GetSipTransaction().deleteTransaction);
 
 		byeTransaction.init(recvMessage.callIdValue);
 		byeTransaction.receiveRequest(recvMessage);
@@ -2866,6 +2888,7 @@ function sipCallProcessing(sipProcessingInstance) {
 				connection.remoteTag = transaction.transaction.fromTag;	
 			}
 			if(recvMessage.cSeqMethod == SIP_METHOD.SM_BYE) {
+				// TODO - to delete this deletion
 				sipProcessingInstance.GetSipTransaction().deleteTransaction(peerTransaction);
 				sipProcessingInstance.GetSipTransaction().deleteTransaction(transaction);
 				
